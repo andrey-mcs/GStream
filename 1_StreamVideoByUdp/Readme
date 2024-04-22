@@ -1,0 +1,7 @@
+Parameters are like this
+python3 1_.py -l m1.mp4 -d 5000 -i 127.0.0.1 -ll 0
+
+
+It equals gst-launch pipeline
+gst-launch-1.0 --gst-debug=3 -v -m filesrc location=m1.mp4 ! decodebin ! tee name=t1 t1. ! x264enc ! rtph264pay ! udpsink host=127.0.0.1 port=5000
+

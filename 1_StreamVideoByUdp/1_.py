@@ -8,10 +8,11 @@ from gi.repository import GObject
 import os
 import signal
 import argparse
+import ipaddress
 
 
 Gst.debug_set_active(True)
-Gst.debug_set_default_threshold(1)
+Gst.debug_set_default_threshold(4)
 Gst.init("")
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 # If PY is 3.11+ threads is not needed 
@@ -21,8 +22,9 @@ GObject.threads_init()
 def parse_args():
     argparser = argparse.ArgumentParser(prog="1_.py")
     argparser.add_argument("-l", "--location")
-    argparser.add_argument("-v", "--voice", help="VoiceDecodedLocation")
-    argparser.add_argument("-vv", "--video", help="VideoDecodedLocation")
+    argparser.add_argument("-d", "--dest-port", default=5000, help="DestStreamPort")
+    argparser.add_argument("-i", "--dest-ip", default="127.0.0.1", help="DestStreamIP")
+    argparser.add_argument("-ll", "--stream-l", default=1, help="IsPlayLocal")
 
     arguments = argparser.parse_args()
     return arguments
@@ -48,7 +50,7 @@ class VideoStreamer():
             taglist = struct.get_value('taglist')
             for x in range(taglist.n_tags()):
                 name = taglist.nth_tag_name(x)
-                print('  %s: %s' % (name, taglist.get_string(name)[1]))
+                #print(' name %s: val %s' % (name, taglist.get_string(name)[1]))
         else:
             pass
 
@@ -70,6 +72,18 @@ class VideoStreamer():
 
         return source
 
+    def create_udpstream(self, args):
+        print("Create UDP packet stream")
+        x264_enc = Gst.ElementFactory.make('x264enc', '264_to_rtph')
+        rtph_udp = Gst.ElementFactory.make('rtph264pay',  'udp264helper')
+        udp_sink  = Gst.ElementFactory.make('udpsink', 'udp264tx')
+        udp_sink.set_property('host', self.args.dest_ip)
+        udp_sink.set_property('port', int(self.args.dest_port))
+        print(rtph_udp)
+        print(udp_sink)
+        print(self.args)
+        return x264_enc, rtph_udp, udp_sink
+
 
     def create_pipeline(self):
         new_pipe = Gst.Pipeline()
@@ -79,15 +93,29 @@ class VideoStreamer():
         videoconvert = Gst.ElementFactory.make('videoconvert', 'video_c')
         videosink = Gst.ElementFactory.make('autovideosink', 'video_sink') 
 
-        def dynamic_decodebin_link(decodebin, pad):
+
+        def dynamic_decodebin_link2vi(decodebin, pad):
             pad.link(videoconvert.get_static_pad('sink'))
 
-        decodebin.connect('pad-added', dynamic_decodebin_link)
+        def dynamic_decodebin_link2ip(decodebin, pad):
+            pad.link(x264_enc.get_static_pad('sink'))
 
-        [new_pipe.add(k) for k in [source, decodebin, videoconvert, videosink]]
+
+        # Pipelines should be added before linking because link are null after adding
+        if int(self.args.stream_l) != 1:
+            x264_enc, udp_serv_rtph, udp_serv_sink = self.create_udpstream(self.args)
+            decodebin.connect('pad-added', dynamic_decodebin_link2ip)
+            [new_pipe.add(k) for k in [source, decodebin, x264_enc, udp_serv_rtph, udp_serv_sink]]
+        else:
+            decodebin.connect('pad-added', dynamic_decodebin_link2vi)
+            [new_pipe.add(k) for k in [source, decodebin, videoconvert, videosink]]
 
         source.link(decodebin)
         videoconvert.link(videosink)
+
+        if int(self.args.stream_l) != 1:
+            x264_enc.link(udp_serv_rtph)
+            udp_serv_rtph.link(udp_serv_sink)
 
         print(source)
         print(decodebin)
