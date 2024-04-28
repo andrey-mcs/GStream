@@ -1,0 +1,18 @@
+Parameters are python3 2_.py -p 5000 -a 2 -v OpenCV
+
+-v may be OpenCV or videosink
+videosink is delays video when sending second time from client
+without receiver restart
+OpenCV has not such issues but had more complexity
+videosource is i420(YUV420p) which actualy is YV12
+OPENCV -> RGB
+[0-size] - is Y location
+[size-size*1.25] - V location
+[size*1.25-size*1.5] - U location
+
+-a alghoritms to decode
+1 decodes it as cv2.COLOR_YCrCb2RGB
+2 create YUV from formula above and convert YUV to RGB
+3 decodes it as flow reshape linear to [1.5*height, width] and convert into native YUV420p2RGB
+
+
